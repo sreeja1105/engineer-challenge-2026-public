@@ -2,6 +2,35 @@
 
 A running log of what I changed in Pulse, what I found, and why.
 
+## Approach and priorities
+
+I read the whole codebase first and treated it as something I now own. My guiding question was:
+"what would make a paying client unhappy, in order of severity?" That put **security first**
+(anyone could log in; data was injectable; customer text could run code), then **a correctness bug
+that silently hides data** (pagination), then **product polish** that affects whether anyone takes
+the app seriously (the joke styling).
+
+I deliberately did not try to fix everything. With a few hours, I chose the highest-impact issues,
+verified each one, and wrote down what I knowingly left alone (see KNOWN-ISSUES.md). I used an AI
+coding agent throughout to move quickly, and reviewed every change — the most important catch
+(`jwt.decode` vs `jwt.verify`) is exactly the kind of plausible-looking mistake an agent makes that
+only a human review catches.
+
+**Where my time went:** most of it on the security pass (auth + password hashing + SQL injection),
+because that was the real risk. The styling rewrite was fast. The type-check at the end caught one
+issue I would have otherwise missed (a possibly-undefined secret), which was a good reminder that
+"the demo runs" is not the same as "the code is correct".
+
+## Summary of changes
+
+1. Replaced the joke UI with a clean, neutral design.
+2. Fixed an authentication bypass, hashed passwords, and stopped leaking them.
+3. Closed SQL-injection holes with parameterized queries.
+4. Fixed pagination (it was hiding the 10 newest items and miscounting pages).
+5. Removed stored XSS by rendering customer text as plain text.
+
+Details below.
+
 ## 1. Replaced the joke "design" with a clean, neutral UI
 
 **What I found:** The app shipped with a deliberately unprofessional look — a Comic Sans font, an
