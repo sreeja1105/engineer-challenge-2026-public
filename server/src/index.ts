@@ -75,8 +75,9 @@ app.get('/feedback', authenticate, (req: Request, res: Response) => {
   try {
     const status = (req.query.status as string) || 'all'
     const search = ((req.query.q as string) || '').trim()
-    const page = parseInt((req.query.page as string) || '1', 10)
-    const offset = page * PAGE_SIZE
+    // Pages are 1-based. Guard against missing, non-numeric, or negative values.
+    const page = Math.max(1, parseInt((req.query.page as string) || '1', 10) || 1)
+    const offset = (page - 1) * PAGE_SIZE
 
     const filters: string[] = []
     const params: any[] = []
@@ -101,7 +102,8 @@ app.get('/feedback', authenticate, (req: Request, res: Response) => {
 
     const items = rows.map(serializeFeedback)
 
-    const total: any = db.prepare('SELECT COUNT(*) as count FROM feedback').get()
+    // Count must use the same filters so the page count is correct when filtering/searching.
+    const total: any = db.prepare(`SELECT COUNT(*) as count FROM feedback ${where}`).get(...params)
     res.json({ items, total: total.count, page })
   } catch (err) {
     console.error('GET /feedback failed', err)

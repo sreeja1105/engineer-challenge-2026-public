@@ -69,3 +69,22 @@ treated as data, never as SQL. I also removed a line that logged the user's auth
 
 **Left for later (noted in KNOWN-ISSUES):** input *validation* (e.g. rejecting an unknown
 `priority` value) is a separate concern from injection and is not done yet.
+
+## 4. Fixed pagination (it was silently hiding data)
+
+**What I found:** Two quiet bugs in `GET /feedback`:
+1. The offset was `page * PAGE_SIZE`, but pages are 1-based — so page 1 skipped the first 10 rows.
+   The 10 newest feedback items were never visible to anyone.
+2. The total count was always `SELECT COUNT(*) FROM feedback` (all 80 rows), ignoring the active
+   filter/search. So filtering to "Resolved" or searching still showed "Page 1 of 8" with empty
+   pages.
+
+**What I changed:** Used `offset = (page - 1) * PAGE_SIZE`, guarded `page` against missing/negative
+values, and made the count query use the same `WHERE` filters as the list query.
+
+**How I verified it:** Page 1 now returns items 1–10 (previously 11–20); page 2 returns 11–20 with
+no overlap; filtering to "Resolved" reports a total of 24 (3 pages); searching "Lucas" reports 5
+items total. The pager now matches reality.
+
+**Why this matters:** This is the kind of bug a demo never reveals — it looks like it works. You
+only catch it by checking the data against what you expect.
