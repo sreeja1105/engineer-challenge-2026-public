@@ -3,10 +3,11 @@ import jwt from 'jsonwebtoken'
 
 // Read the signing secret from the environment. We refuse to start without it,
 // so a missing/placeholder secret can never silently weaken auth in production.
-export const JWT_SECRET = process.env.JWT_SECRET
-if (!JWT_SECRET) {
+const secret = process.env.JWT_SECRET
+if (!secret) {
   throw new Error('JWT_SECRET is not set. Add it to server/.env before starting.')
 }
+export const JWT_SECRET: string = secret
 
 /**
  * Verify a JWT and return its payload, or null if the token is missing/invalid.

