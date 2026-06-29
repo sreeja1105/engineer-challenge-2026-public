@@ -1,25 +1,34 @@
 import { Request, Response, NextFunction } from 'express'
 import jwt from 'jsonwebtoken'
 
-export const JWT_SECRET = 'pulse-dev-secret-2024'
+// Read the signing secret from the environment. We refuse to start without it,
+// so a missing/placeholder secret can never silently weaken auth in production.
+export const JWT_SECRET = process.env.JWT_SECRET
+if (!JWT_SECRET) {
+  throw new Error('JWT_SECRET is not set. Add it to server/.env before starting.')
+}
 
-export function authenticate(req: Request, res: Response, next: NextFunction) {
-  const header = req.headers.authorization || ''
+/**
+ * Verify a JWT and return its payload, or null if the token is missing/invalid.
+ * Uses jwt.verify (not jwt.decode) so a forged or tampered token is rejected.
+ */
+export function verifyToken(authHeader: string | undefined): jwt.JwtPayload | null {
+  const header = authHeader || ''
   const token = header.startsWith('Bearer ') ? header.slice(7) : header
-
-  if (!token) {
-    return res.status(401).json({ error: 'Missing token' })
-  }
+  if (!token) return null
 
   try {
-    const payload = jwt.decode(token)
-    if (!payload) {
-      return res.status(401).json({ error: 'Invalid token' })
-    }
-    ;(req as any).user = payload
-    next()
-  } catch (err) {
-    console.error(header, err)
-    res.status(401).json({ error: 'Invalid token' })
+    return jwt.verify(token, JWT_SECRET) as jwt.JwtPayload
+  } catch {
+    return null
   }
+}
+
+export function authenticate(req: Request, res: Response, next: NextFunction) {
+  const user = verifyToken(req.headers.authorization)
+  if (!user) {
+    return res.status(401).json({ error: 'Invalid or missing token' })
+  }
+  ;(req as any).user = user
+  next()
 }

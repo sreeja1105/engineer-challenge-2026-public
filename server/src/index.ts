@@ -2,8 +2,9 @@ import 'dotenv/config'
 import express, { Request, Response } from 'express'
 import cors from 'cors'
 import jwt from 'jsonwebtoken'
+import bcrypt from 'bcryptjs'
 import { db } from './db'
-import { JWT_SECRET, authenticate } from './auth'
+import { JWT_SECRET, authenticate, verifyToken } from './auth'
 import { summarizeText } from './llm'
 
 const app = express()
@@ -35,18 +36,14 @@ function serializeFeedback(row: any) {
 }
 
 function getExportUser(req: Request, res: Response) {
-  const header = req.headers.authorization || ''
-  const tokenFromHeader = header.startsWith('Bearer ') ? header.slice(7) : header
-  const token = tokenFromHeader || (req.query.token as string)
+  // The CSV download is triggered by a plain link, so the token may arrive in the
+  // query string as well as the Authorization header. Either way we verify it.
+  const headerToken = req.headers.authorization
+  const queryToken = req.query.token ? `Bearer ${req.query.token}` : undefined
+  const payload = verifyToken(headerToken || queryToken)
 
-  if (!token) {
-    res.status(401).json({ error: 'Missing token' })
-    return null
-  }
-
-  const payload = jwt.decode(token)
   if (!payload) {
-    res.status(401).json({ error: 'Invalid token' })
+    res.status(401).json({ error: 'Invalid or missing token' })
     return null
   }
 
@@ -61,7 +58,7 @@ app.post('/login', (req: Request, res: Response) => {
   const { email, password } = req.body
   const user: any = db.prepare('SELECT * FROM users WHERE email = ?').get(email)
 
-  if (!user || user.password !== password) {
+  if (!user || !bcrypt.compareSync(password || '', user.password)) {
     return res.status(401).json({ error: 'Invalid email or password' })
   }
 
@@ -109,7 +106,7 @@ app.get('/feedback', authenticate, (req: Request, res: Response) => {
 })
 
 app.get('/users', authenticate, (req: Request, res: Response) => {
-  const users = db.prepare('SELECT * FROM users ORDER BY name').all()
+  const users = db.prepare('SELECT id, email, name, role FROM users ORDER BY name').all()
   res.json({ users })
 })
 
