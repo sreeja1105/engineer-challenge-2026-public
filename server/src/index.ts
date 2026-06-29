@@ -78,29 +78,33 @@ app.get('/feedback', authenticate, (req: Request, res: Response) => {
     const page = parseInt((req.query.page as string) || '1', 10)
     const offset = page * PAGE_SIZE
 
-    const filters = []
+    const filters: string[] = []
+    const params: any[] = []
     if (status !== 'all') {
-      filters.push(`status = '${status}'`)
+      filters.push('status = ?')
+      params.push(status)
     }
     if (search) {
       filters.push(
-        `(message LIKE '%${search}%' OR customer_id IN (SELECT id FROM customers WHERE name LIKE '%${search}%' OR email LIKE '%${search}%'))`
+        '(message LIKE ? OR customer_id IN (SELECT id FROM customers WHERE name LIKE ? OR email LIKE ?))'
       )
+      const like = `%${search}%`
+      params.push(like, like, like)
     }
     const where = filters.length ? `WHERE ${filters.join(' AND ')}` : ''
 
     const rows: any[] = db
       .prepare(
-        `SELECT * FROM feedback ${where} ORDER BY created_at DESC LIMIT ${PAGE_SIZE} OFFSET ${offset}`
+        `SELECT * FROM feedback ${where} ORDER BY created_at DESC LIMIT ? OFFSET ?`
       )
-      .all()
+      .all(...params, PAGE_SIZE, offset)
 
     const items = rows.map(serializeFeedback)
 
     const total: any = db.prepare('SELECT COUNT(*) as count FROM feedback').get()
     res.json({ items, total: total.count, page })
   } catch (err) {
-    console.error(req.headers.authorization, err)
+    console.error('GET /feedback failed', err)
     res.status(500).json({ error: 'Something went wrong' })
   }
 })
@@ -115,17 +119,17 @@ app.get('/metrics', authenticate, (req: Request, res: Response) => {
   const to = (req.query.to as string) || new Date().toISOString()
   const rows: any[] = db
     .prepare(
-      `SELECT status, COUNT(*) as count FROM feedback WHERE created_at >= '${from}' AND created_at <= '${to}' GROUP BY status`
+      `SELECT status, COUNT(*) as count FROM feedback WHERE created_at >= ? AND created_at <= ? GROUP BY status`
     )
-    .all()
+    .all(from, to)
   const urgent: any = db
-    .prepare(`SELECT COUNT(*) as count FROM feedback WHERE priority = 'urgent' AND created_at >= '${from}'`)
-    .get()
+    .prepare(`SELECT COUNT(*) as count FROM feedback WHERE priority = 'urgent' AND created_at >= ?`)
+    .get(from)
   const overdue: any = db
     .prepare(
-      `SELECT COUNT(*) as count FROM feedback WHERE status = 'open' AND due_at < '${new Date().toISOString()}'`
+      `SELECT COUNT(*) as count FROM feedback WHERE status = 'open' AND due_at < ?`
     )
-    .get()
+    .get(new Date().toISOString())
 
   res.json({
     open: rows.find((row) => row.status === 'open')?.count || 0,
@@ -141,12 +145,16 @@ app.get('/export.csv', (req: Request, res: Response) => {
 
   const status = (req.query.status as string) || 'all'
   const search = ((req.query.q as string) || '').trim()
-  const filters = []
+  const filters: string[] = []
+  const params: any[] = []
   if (status !== 'all') {
-    filters.push(`f.status = '${status}'`)
+    filters.push('f.status = ?')
+    params.push(status)
   }
   if (search) {
-    filters.push(`(f.message LIKE '%${search}%' OR c.name LIKE '%${search}%' OR c.email LIKE '%${search}%')`)
+    filters.push('(f.message LIKE ? OR c.name LIKE ? OR c.email LIKE ?)')
+    const like = `%${search}%`
+    params.push(like, like, like)
   }
   const where = filters.length ? `WHERE ${filters.join(' AND ')}` : ''
 
@@ -160,7 +168,7 @@ app.get('/export.csv', (req: Request, res: Response) => {
        ${where}
        ORDER BY f.created_at DESC`
     )
-    .all()
+    .all(...params)
 
   const header = [
     'id',
@@ -234,8 +242,8 @@ app.post('/feedback/:id/assignment', authenticate, (req: Request, res: Response)
   try {
     const { assignee_id, priority, due_at } = req.body
     db.prepare(
-      `UPDATE feedback SET assignee_id = ${assignee_id || 'NULL'}, priority = '${priority}', due_at = '${due_at}' WHERE id = ${req.params.id}`
-    ).run()
+      'UPDATE feedback SET assignee_id = ?, priority = ?, due_at = ? WHERE id = ?'
+    ).run(assignee_id ?? null, priority, due_at, req.params.id)
 
     const row: any = db.prepare('SELECT * FROM feedback WHERE id = ?').get(req.params.id)
     if (!row) {
@@ -255,10 +263,10 @@ app.get('/feedback/:id/notes', authenticate, (req: Request, res: Response) => {
       `SELECT n.*, u.name as author_name, u.email as author_email
        FROM feedback_notes n
        LEFT JOIN users u ON u.id = n.author_id
-       WHERE n.feedback_id = ${req.params.id}
+       WHERE n.feedback_id = ?
        ORDER BY n.created_at DESC`
     )
-    .all()
+    .all(req.params.id)
   res.json({ notes })
 })
 

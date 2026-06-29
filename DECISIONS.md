@@ -48,3 +48,24 @@ browser. I changed it to select only `id, email, name, role`.
 **Note on AI:** the `jwt.decode`-instead-of-`jwt.verify` bug is exactly the kind of thing an AI
 agent produces — it looks correct and runs fine on the happy path, but silently disables security.
 It is only caught by reading the code, not by running the demo.
+
+## 3. Closed the SQL-injection holes
+
+**What I found:** Many queries were built by gluing user input straight into the SQL string, so a
+user could change the query itself. The worst was `POST /feedback/:id/assignment`, which inserted
+`priority`, `due_at`, and the URL `id` directly into an `UPDATE`. The list search, metrics date
+range, CSV export filters, and the notes lookup had the same flaw.
+
+**What I changed:** Rewrote every one of these to use parameterized queries (`?` placeholders with
+values passed separately), which `better-sqlite3` already supports. User input is now always
+treated as data, never as SQL. I also removed a line that logged the user's auth token on error.
+
+**How I verified it:**
+- A normal search still returns the right rows.
+- `q=' OR '1'='1` now returns 0 rows (treated as literal text) instead of dumping everything.
+- A `'; DROP TABLE feedback; --` search returns HTTP 200 and the `feedback` table still has all
+  80 rows — the attack does nothing.
+- The assignment update still saves owner, priority, and due date correctly.
+
+**Left for later (noted in KNOWN-ISSUES):** input *validation* (e.g. rejecting an unknown
+`priority` value) is a separate concern from injection and is not done yet.
