@@ -32,12 +32,17 @@ I worked in a tight loop, one issue at a time:
 
 ## The most important catch
 
-The agent's first instinct in the existing code (and a very common AI mistake) was authentication
-that used `jwt.decode()` — which reads a token but never checks its signature, so any forged token
-is accepted. It looks correct and the demo runs fine. I caught it by reading the auth code, then
-verified the fix by forging a token with the wrong secret and confirming the API now returns 401.
-This is the clearest example of the point of the role: **review what the agent produces; do not
-paste it blind.**
+The auth middleware in the existing code used `jwt.decode()` instead of `jwt.verify()`. Decode only
+reads a token, it never checks the signature, so any forged token was accepted. The demo runs fine,
+which is why it was never caught.
+
+When I asked the agent to fix it, its first proposal was to wrap the existing `jwt.decode` call in a
+try/catch to handle malformed tokens. That makes the code look safer but leaves the auth bypass
+intact. I overruled and asked for `jwt.verify` with a guarded `JWT_SECRET` from the environment,
+then verified by forging a token with the wrong secret and confirming the API returns 401.
+
+This is the clearest example of the point of the role: review what the agent produces, do not paste
+it blind.
 
 ## Where the agent helped vs. where I overruled it
 
@@ -46,6 +51,11 @@ paste it blind.**
 - **I directed/overruled:** the *priority order* (what to fix and what to skip in the time box), and
   insisting on verification for each change. A type-check at the end caught a possibly-undefined
   secret that runtime testing had missed — a reminder that "it ran" is not "it's correct".
+- **I overruled on scope:** when the agent proposed refactoring serializeFeedback to fix the N+1
+  queries (a real perf issue with a clean JOIN-based rewrite), I declined and moved it to
+  KNOWN-ISSUES. N+1 on 80 seed rows is a perf concern, not a correctness one, and the three hours
+  were better spent on auth and SQL injection. The agent was right that the fix was possible, I was
+  right that it was not the priority.
 
 ## Full transcript
 
