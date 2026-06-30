@@ -33,6 +33,18 @@ Listing them is intentional: knowing what is still wrong matters as much as the 
    `change-me-in-production` in `.env.example` would pass that check. For production I would require
    a strong secret and document rotation.
 
+## LLM endpoint specific (what I left after the Tuesday fix)
+
+12. **No rate limiting on `/summarize`.** An authenticated user can call it in a loop and run up the
+    LLM bill. Fix: `express-rate-limit`, e.g. 10 summaries per user per hour. ~15 min.
+
+13. **No caching of summaries.** Same feedback summarized twice runs a new LLM call. Fix: store the
+    summary on the feedback row with a content hash, return the cached version when the hash matches.
+
+14. **`summarizeText` LLM client not audited in this pass.** Things to check there: where the API key
+    is read from (must be env, not source), whether there is a max-tokens cap per request, and whether
+    errors are returned cleanly to the route. Worth a 15-minute pass before shipping.
+
 ## Reliability / quality
 
 7. **Inbox auto-refresh has a stale-closure bug.** The 45-second `setInterval` in `Inbox.tsx` has
@@ -59,7 +71,8 @@ Listing them is intentional: knowing what is still wrong matters as much as the 
 
 1. Enforce private-note access control (#2) and add input validation (#3) — these are correctness
    and trust issues a client would hit quickly.
-2. Fix CSV formula injection (#1).
-3. Add a small automated test suite around auth, pagination, and injection (#9).
-4. Move sessions to httpOnly cookies (#4, #5).
-5. Clean up the N+1 query and the polling bug (#7, #8).
+2. Add rate limiting to `/summarize` (#12). Cost runaway is a real client risk and easy to prevent.
+3. Fix CSV formula injection (#1).
+4. Add a small automated test suite around auth, pagination, and injection (#9).
+5. Move sessions to httpOnly cookies (#4, #5).
+6. Clean up the N+1 query and the polling bug (#7, #8).
